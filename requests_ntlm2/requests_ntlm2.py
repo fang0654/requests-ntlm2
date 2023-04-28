@@ -2,8 +2,14 @@ import io
 
 from requests.auth import AuthBase
 
-from .core import NtlmCompatibility, get_auth_type_from_header, get_cbt_data, get_ntlm_credentials
+from .core import (
+    NtlmCompatibility,
+    get_auth_type_from_header,
+    get_cbt_data,
+    get_ntlm_credentials,
+)
 from .dance import HttpNtlmContext
+import pdb
 
 
 class HttpNtlmAuth(AuthBase):
@@ -12,11 +18,12 @@ class HttpNtlmAuth(AuthBase):
     """
 
     def __init__(
-        self, username,
+        self,
+        username,
         password,
         send_cbt=True,
         ntlm_compatibility=NtlmCompatibility.NTLMv2_DEFAULT,
-        ntlm_strict_mode=False
+        ntlm_strict_mode=False,
     ):
         """Create an authentication handler for NTLM over HTTP.
 
@@ -29,7 +36,9 @@ class HttpNtlmAuth(AuthBase):
                                 that does not conform to the NTLM spec
         """
 
-        self.username, self.password, self.domain = get_ntlm_credentials(username, password)
+        self.username, self.password, self.domain = get_ntlm_credentials(
+            username, password
+        )
 
         if self.domain:
             self.domain = self.domain.upper()
@@ -81,7 +90,7 @@ class HttpNtlmAuth(AuthBase):
             auth_type=auth_type,
             cbt_data=cbt_data,
             ntlm_compatibility=self.ntlm_compatibility,
-            ntlm_strict_mode=self.ntlm_strict_mode
+            ntlm_strict_mode=self.ntlm_strict_mode,
         )
         request.headers[auth_header] = ntlm_context.get_negotiate_header()
 
@@ -128,6 +137,7 @@ class HttpNtlmAuth(AuthBase):
 
     def response_hook(self, r, **kwargs):
         """The actual hook handler."""
+
         if r.status_code == 401:
             # Handle server auth.
             www_authenticate = r.headers.get("www-authenticate", "")
@@ -146,6 +156,11 @@ class HttpNtlmAuth(AuthBase):
                     "proxy-authenticate", "Proxy-Authorization", r, auth_type, kwargs
                 )
 
+        elif r.request.headers.get("X-Force-NTLM"):
+            r.headers["WWW-Authenticate"] = "NTLM"
+            return self.retry_using_http_ntlm_auth(
+                "www-authenticate", "Authorization", r, "NTLM", kwargs
+            )
         return r
 
     def __call__(self, r):
